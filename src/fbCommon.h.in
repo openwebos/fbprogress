@@ -1,0 +1,123 @@
+// @@@LICENSE
+//
+//      Copyright (c) 2007-2012 Hewlett-Packard Development Company, L.P.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// LICENSE@@@
+
+#ifndef __FBCOMMON_H
+#define __FBCOMMON_H
+
+#include <pthread.h>
+#include <time.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <string.h>
+#include <cerrno>
+#include <string>
+#include <algorithm>
+#include <cstdio>
+#include <stdint.h>
+
+using namespace std;
+
+#define C_ROOTFS   "/rootfs"
+#define C_TMP_DIR  "/tmp"
+#define C_WORK_DIR C_TMP_DIR"/fbprogress"
+#define C_LOG_DIR  "@WEBOS_INSTALL_LOGDIR@"
+
+enum e_LogLevel { E_NOLOG = 0, E_ERR, E_WARN, E_LOG, E_DEBUG, E_VERBOSE };
+enum eImageType { E_UNKNOWN = 0, E_ANIM, E_MSG };
+
+static const enum e_LogLevel gLogLevel      = E_NOLOG;
+
+static const uint8_t C_LOGS_TO_KEEP         = 5;
+
+static const char C_NL                      = '\n';
+static const char* const C_DIR_SEPARATOR    = "/";
+static const char* const C_ERROR_LEVEL      = "ERROR";
+static const char* const C_WARN_LEVEL       = "WARNING";
+static const char* const C_DEBUG_LEVEL      = "DEBUG";
+static const char* const C_VERBOSE_LEVEL    = "VERBOSE";
+
+static const char* const C_LOG_EXT          = ".log";
+
+static const char* const C_LIST_CMD         = "tar -ztf ";
+static const char* const C_EXTRACT_CMD      = "tar -C "C_WORK_DIR" -xzf ";
+
+static const char* const C_PROGRESS_PIPE    = C_WORK_DIR"/progress";
+static const char* const C_MESSAGE_PIPE     = C_WORK_DIR"/message";
+
+static const char* const C_IMAGE_BACKGROUND = "flashing-static";
+static const char* const C_IMAGE_ANIMATION  = "flashing-activity";
+static const char* const C_IMAGE_PROGRESS   = "flashing-progress";
+
+static const uint16_t C_ANIMATION_FRAMES    = 20;
+static const uint16_t C_PROGRESS_FRAMES     = 40;
+static const uint32_t C_ANIMATION_PAUSE     = 50000;   // 10^-6 s
+static const uint32_t C_SELECT_PAUSE        = 100000;  // 10^-6 s
+static const uint32_t C_PROGRESS_PAUSE      = 90000;   // 10^-6 s
+
+static inline bool FileExists(const char* file);
+static inline string& ltrim(string& s);
+static inline string& rtrim(string &s);
+static inline string& trim(string& s);
+static inline string& to_lower(string& s);
+static inline string& to_upper(string& s);
+
+////////////////////////////////////////////
+//        inline common functions         //
+////////////////////////////////////////////
+
+static inline bool
+FileExists(const char* file)
+{
+	bool ret = false;
+	if (file != NULL && strlen(file) > 0)
+	{
+		ret = 0 == access(file, F_OK);
+	}
+	return ret;
+}
+
+static inline string& ltrim(string& s)
+{
+	s.erase(s.begin(), find_if(s.begin(), s.end(), not1(ptr_fun<int, int>(isspace))));
+	return s;
+}
+
+static inline string& rtrim(string &s)
+{
+	s.erase(find_if(s.rbegin(), s.rend(), not1(ptr_fun<int, int>(isspace))).base(), s.end());
+	return s;
+}
+
+static inline string& trim(string& s)
+{
+	return ltrim(rtrim(s));
+}
+
+static inline string& to_lower(string& s)
+{
+	transform(s.begin(), s.end(), s.begin(), ::tolower);
+	return s;
+}
+
+static inline string& to_upper(string& s)
+{
+	transform(s.begin(), s.end(), s.begin(), ::toupper);
+	return s;
+}
+
+#endif

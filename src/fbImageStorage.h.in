@@ -1,0 +1,611 @@
+// @@@LICENSE
+//
+//      Copyright (c) 2007-2012 Hewlett-Packard Development Company, L.P.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// LICENSE@@@
+
+
+#ifndef __FBIMAGESTORAGE_H
+#define __FBIMAGESTORAGE_H
+
+#include <set>
+#include <map>
+#include "fbCommon.h"
+#include "fbTga.h"
+#include "fbLocaleManager.h"
+
+using namespace std;
+
+static const char C_TGA_ARGS_DELIMITER      = '.';
+
+static const char* const C_IMAGES_FOLDER    = "@WEBOS_INSTALL_DATADIR@/fbprogress/";
+static const char* const C_COMMON_TGZ       = "common.tgz";
+static const char* const C_IMAGES_TGZ       = "images.tgz";
+static const char* const C_ANIM_EXTENSION   = "tga";
+
+static const char* const C_STORAGE_ID       = "storage";
+static const char* const C_COUNTRY_ID       = "country";
+static const char* const C_LANGUAGE_ID      = "language";
+static const char* const C_TYPE_ID          = "type";
+static const char* const C_ANIM_ID          = "animation";
+static const char* const C_MESSAGE_ID       = "message";
+
+struct stImageProp {
+	string name;
+	string id;
+	string container;
+	stImageProp(): name(""), id(""), container("") {}
+};
+
+struct stLoadSpec {
+	bool        loadmessage;
+	bool        loadprogress;
+	const char* message;
+	stLoadSpec(): loadmessage(true), loadprogress(true), message(NULL) {}
+};
+
+template <class T> class fbContainerIf;
+template <class T> class fbSetIf;
+template <class T, class U> class fbMapIf;
+template <class T> class fbImageIdSet;
+template <class T, class U> class fbIndexMap;
+class fbIndexItem;
+class fbIndex;
+class fbImageStorage;
+
+////////////////////////////////////////////
+//           fbContainerIf class          //
+////////////////////////////////////////////
+
+template <class T>
+class fbContainerIf
+{
+public:
+	virtual void Erase  (const T& item) = 0;
+	virtual bool HasItem(const T& item) = 0;
+	virtual void Clear()     = 0;
+	virtual bool Empty()     = 0;
+	virtual uint16_t Size()  = 0;
+};
+
+////////////////////////////////////////////
+//              fbSetIf class             //
+////////////////////////////////////////////
+
+template <class T>
+class fbSetIf : public fbContainerIf<T>
+{
+public:
+	virtual void Insert (const T& value) = 0;
+};
+
+////////////////////////////////////////////
+//             fbMapIf class              //
+////////////////////////////////////////////
+
+template <class T, class U>
+class fbMapIf : public fbContainerIf<T>
+{
+public:
+	virtual void Insert (const T& id, const U& value) = 0;
+};
+
+////////////////////////////////////////////
+//           fbImageIdSet class           //
+////////////////////////////////////////////
+
+template <class T>
+class fbImageIdSet : public fbSetIf<T>
+{
+private:
+	set<T>           m_set;
+	typename set<T>::iterator m_current;
+public:
+	fbImageIdSet();
+	fbImageIdSet(const T& value);
+	void Insert(const T& value);
+	void Erase (const T& value);
+	void Reset();
+	void Clear();
+	bool Empty();
+	bool HasItem(const T& value);
+	typename set<T>::iterator Current();
+	typename set<T>::iterator Begin();
+	typename set<T>::iterator End();
+	typename set<T>::iterator Find(const T& value);
+	typename set<T>::iterator GetNext();
+	uint16_t Size();
+};
+
+template <class T>
+fbImageIdSet<T>::fbImageIdSet()
+{
+	m_current = m_set.end();
+}
+
+template <class T>
+fbImageIdSet<T>::fbImageIdSet(const T& value)
+{
+	m_current = m_set.end();
+	Insert(value);
+}
+
+template <class T>
+void fbImageIdSet<T>::Reset()
+{
+	m_current = m_set.end();
+}
+
+template <class T>
+void fbImageIdSet<T>::Insert(const T& value)
+{
+	if (m_set.find(value) == m_set.end())
+	{
+		m_set.insert(value);
+	}
+}
+
+template <class T>
+void fbImageIdSet<T>::Erase(const T& value)
+{
+	if (!m_set.empty())
+	{
+		typename set<T>::iterator it;
+		if ((it = m_set.find(value)) != m_set.end())
+		{
+			bool begin = false;
+			if (it == m_current)
+			{
+				if (m_current == m_set.begin())
+				{
+					begin = true;
+				}
+				else
+				{
+					--m_current;
+				}
+			}
+			m_set.erase(value);
+			if (begin)
+			{
+				m_current = m_set.empty() ? m_set.end() : m_set.begin();
+			}
+		}
+	}
+}
+
+template <class T>
+void fbImageIdSet<T>::Clear()
+{
+	m_set.clear();
+	m_current = m_set.end();
+}
+
+template <class T>
+bool fbImageIdSet<T>::Empty()
+{
+	return m_set.empty();
+}
+
+template <class T>
+bool fbImageIdSet<T>::HasItem(const T& value)
+{
+	return m_set.find(value) != m_set.end();
+}
+
+template <class T>
+typename set<T>::iterator fbImageIdSet<T>::Current()
+{
+	return m_current;
+}
+
+template <class T>
+typename set<T>::iterator fbImageIdSet<T>::Begin()
+{
+	return m_set.begin();
+}
+
+template <class T>
+typename set<T>::iterator fbImageIdSet<T>::End()
+{
+	return m_set.end();
+}
+
+template <class T>
+typename set<T>::iterator fbImageIdSet<T>::Find(const T& value)
+{
+	m_current = m_set.find(value);
+	return m_current;
+}
+
+template <class T>
+typename set<T>::iterator fbImageIdSet<T>::GetNext()
+{
+	if (!m_set.empty())
+	{
+		if (m_set.end() == m_current)
+		{
+			m_current = m_set.begin();
+		}
+		else
+		{
+			++m_current;
+		}
+	}
+	return m_current;
+}
+
+template <class T>
+uint16_t fbImageIdSet<T>::Size()
+{
+	return m_set.size();
+}
+
+////////////////////////////////////////////
+//             fbIndexMap class           //
+////////////////////////////////////////////
+
+template <class T, class U>
+class fbIndexMap : public fbMapIf<T, U>
+{
+private:
+	map<T, fbImageIdSet<U> >   m_map;
+	map<U, uint16_t>           m_ref;
+	set<U>                     m_set;
+public:
+	void Insert(const T& id, const U& value);
+	void Erase (const T& id, const U& value);
+	void Erase (const T& id);
+	void Clear (const T& id);
+	void Clear ();
+	void Reset (const T& id);
+	void Reset ();
+	bool Empty (const T& id);
+	bool Empty ();
+	bool HasItem(const T& id, const U& value);
+	bool HasItem(const T& id);
+	typename set<U>::iterator Begin   ();
+	typename set<U>::iterator End     ();
+	typename set<U>::iterator GetItem (const T& id, bool reset = true);
+	uint16_t Size(const T& id);
+	uint16_t Size();
+};
+
+template <class T, class U>
+void fbIndexMap<T,U>::Insert(const T& id, const U& value)
+{
+	typename map<T, fbImageIdSet<U> >::iterator it;
+	typename map<U, uint16_t>::iterator it_ref;
+	if ((it = m_map.find(id)) == m_map.end())
+	{
+		fbImageIdSet<U> set;
+		pair<typename map<T, fbImageIdSet<U> >::iterator, bool> ret;
+		ret = m_map.insert(make_pair<T, fbImageIdSet<U> >(id, set));
+		it  = ret.first;
+	}
+	it->second.Insert(value);
+	if ((it_ref = m_ref.find(value)) == m_ref.end())
+	{
+		pair<typename map<U,uint16_t>::iterator, bool> ret;
+		ret = m_ref.insert(make_pair<U,uint16_t>(value,0));
+		it_ref = ret.first;
+		m_set.insert(value);
+	}
+	++(it_ref->second);
+}
+
+template <class T, class U>
+void fbIndexMap<T,U>::Erase(const T& id, const U& value)
+{
+	typename map<T, fbImageIdSet<U> >::iterator it;
+	if ((it = m_map.find(id)) != m_map.end())
+	{
+		typename map<U, uint16_t>::iterator it_ref;
+		it->second.Erase(value);
+		if ((it_ref = m_ref.find(value)) != m_ref.end())
+		{
+			if (it_ref->second > 0)
+			{
+				--(it_ref->second);
+			}
+			if (it_ref->second == 0)
+			{
+				m_set.erase(it_ref->first);
+				m_ref.erase(it_ref);
+			}
+		}
+	}
+}
+
+template <class T, class U>
+void fbIndexMap<T,U>::Erase(const T& id)
+{
+	typename map<T, fbImageIdSet<U> >::iterator it;
+	if ((it = m_map.find(id)) != m_map.end())
+	{
+		typename set<U>::iterator it_set;
+		while ((it_set = it->second.GetNext()) != it->second.End())
+		{
+			typename map<U, uint16_t>::iterator it_ref;
+			if ((it_ref = m_ref.find(*it_set)) != m_ref.end())
+			{
+				if (it_ref->second > 0)
+				{
+					--(it_ref->second);
+				}
+				if (it_ref->second == 0)
+				{
+					m_set.erase(it_ref->first);
+					m_ref.erase(it_ref);
+				}
+			}
+		}
+		m_map.erase(it);
+	}
+}
+
+template <class T, class U>
+void fbIndexMap<T,U>::Clear(const T& id)
+{
+	typename map<T, fbImageIdSet<U> >::iterator it;
+	if ((it = m_map.find(id)) != m_map.end())
+	{
+		typename set<U>::iterator it_set;
+		while ((it_set = it->second.GetNext()) != it->second.End())
+		{
+			typename map<U, uint16_t>::iterator it_ref;
+			if ((it_ref = m_ref.find(*it_set)) != m_ref.end())
+			{
+				if (it_ref->second > 0)
+				{
+					--(it_ref->second);
+				}
+				if (it_ref->second == 0)
+				{
+					m_set.erase(it_ref->first);
+					m_ref.erase(it_ref);
+				}
+			}
+		}
+		it->second.Clear();
+	}
+}
+
+template <class T, class U>
+void fbIndexMap<T,U>::Clear()
+{
+	m_map.clear();
+	m_ref.clear();
+	m_set.clear();
+}
+
+template <class T, class U>
+void fbIndexMap<T,U>::Reset(const T& id)
+{
+	typename map<T, fbImageIdSet<U> >::iterator it;
+	if ((it = m_map.find(id)) != m_map.end())
+	{
+		it->second.Reset();
+	}
+}
+
+template <class T, class U>
+void fbIndexMap<T,U>::Reset()
+{
+	typename map<T, fbImageIdSet<U> >::iterator it;
+	for (it = m_map.begin(); it != m_map.end(); ++it)
+	{
+		it->second.Reset();
+	}
+}
+
+template <class T, class U>
+bool fbIndexMap<T,U>::Empty(const T& id)
+{
+	bool empty = true;
+	typename map<T, fbImageIdSet<U> >::iterator it;
+	if ((it = m_map.find(id)) != m_map.end())
+	{
+		empty = it->second.Empty();
+	}
+	return empty;
+}
+
+template <class T, class U>
+bool fbIndexMap<T,U>::Empty()
+{
+	return m_map.empty();
+}
+
+template <class T, class U>
+bool fbIndexMap<T,U>::HasItem(const T& id, const U& value)
+{
+	bool hasitem = false;
+	typename map<T, fbImageIdSet<U> >::iterator it;
+	if ((it = m_map.find(id)) != m_map.end())
+	{
+		hasitem = it->second.HasItem(value);
+	}
+	return hasitem;
+}
+
+template <class T, class U>
+bool fbIndexMap<T,U>::HasItem(const T& id)
+{
+	return m_map.find(id) != m_map.end();
+}
+
+template <class T, class U>
+typename set<U>::iterator fbIndexMap<T,U>::Begin()
+{
+	return m_set.begin();
+}
+
+template <class T, class U>
+typename set<U>::iterator fbIndexMap<T,U>::End()
+{
+	return m_set.end();
+}
+
+template <class T, class U>
+typename set<U>::iterator fbIndexMap<T,U>::GetItem(const T& id, bool reset)
+{
+	typename set<U>::iterator it = m_set.end();
+	typename map<T, fbImageIdSet<U> >::iterator it_ind;
+	if ((it_ind = m_map.find(id)) != m_map.end())
+	{
+		typename set<U>::iterator it_set;
+		if (reset)
+		{
+			it_ind->second.Reset();
+		}
+		if ((it_set = it_ind->second.GetNext()) != it_ind->second.End())
+		{
+			it = m_set.find(*it_set);
+		}
+		else if (it_ind->second.Size() > 0 && (it_set = it_ind->second.GetNext()) != it_ind->second.End())	// look from beginning of the set
+		{
+			it = m_set.find(*it_set);
+		}
+	}
+	return it;
+}
+
+template <class T, class U>
+uint16_t fbIndexMap<T,U>::Size()
+{
+	uint16_t size = 0;
+	typename map<U, uint16_t>::iterator it;
+	for (it = m_ref.begin(); it != m_ref.end(); ++it)
+	{
+		size += it->second;
+	}
+	return size;
+}
+
+template <class T, class U>
+uint16_t fbIndexMap<T,U>::Size(const T& id)
+{
+	uint16_t size = 0;
+	typename map<T, fbImageIdSet<U> >::iterator it;
+	if ((it = m_map.find(id)) != m_map.end())
+	{
+		size = it->second.Size();
+	}
+	return size;
+}
+
+////////////////////////////////////////////
+//            fbIndexItem class           //
+////////////////////////////////////////////
+
+class fbIndexItem
+{
+private:
+	eImageType m_type;
+	string     m_id;
+	string     m_name;
+	string     m_container;
+	string     m_language;
+	string     m_country;
+public:
+	fbIndexItem();
+	fbIndexItem(const stImageProp& prop);
+	fbIndexItem(const stImageProp* prop);
+	void SetProperties(const string& id);
+	void SetProperties(const char* id);
+	void SetContainer(const string& container);
+	void SetContainer(const char* container);
+	void SetName(const string& name);
+	void SetName(const char* name);
+	eImageType GetType();
+	string&    GetId();
+	string&    GetLanguage();
+	string&    GetCountry();
+	string&    GetContainer();
+	string&    GetName();
+};
+
+////////////////////////////////////////////
+//               fbIndex class            //
+////////////////////////////////////////////
+
+class fbIndex : public fbContainerIf<string>
+{
+private:
+	map<string, fbIndexItem>      m_index;
+	map<eImageType,uint16_t>      m_ref;
+	fbIndexMap<string,string>     m_langIndex;
+	fbIndexMap<string,string>     m_countryIndex;
+	fbIndexMap<eImageType,string> m_typeIndex;
+public:
+	fbIndex() {}
+	fbIndex(const stImageProp& image_prop);
+	void Insert(const stImageProp* image_prop);
+	void Insert(const stImageProp& image_prop);
+	void Erase(const string& image_id);
+	void Erase(const char* image_id);
+	void Clear();
+	bool HasItem(const string& image_id);
+	bool Empty();
+	map<string, fbIndexItem>::iterator Begin();
+	map<string, fbIndexItem>::iterator End();
+	map<string, fbIndexItem>::iterator GetItemById(const char* image_id);
+	map<string, fbIndexItem>::iterator GetItemById(const string& image_id);
+	map<string, fbIndexItem>::iterator GetItemByLanguage(const char* language);
+	map<string, fbIndexItem>::iterator GetItemByLanguage(const string& language);
+	map<string, fbIndexItem>::iterator GetItemByCountry(const char* country);
+	map<string, fbIndexItem>::iterator GetItemByCountry(const string& country);
+	map<string, fbIndexItem>::iterator GetItemByType(const eImageType type);
+	uint16_t Size();
+	uint16_t Size(const eImageType type);
+};
+
+////////////////////////////////////////////
+//           fbImageStorage class         //
+////////////////////////////////////////////
+
+class fbImageStorage : public fbContainerIf<string>
+{
+private:
+	string               m_workdir;
+	fbLocaleManager      m_locale;
+	map<string, fbIndex> m_index;
+	map<string, fbTga*>  m_data;
+	bool LoadImage(const stImageProp& prop, const eImageType type);
+	bool LoadImage(const stImageProp* prop, const eImageType type);
+public:
+	fbImageStorage();
+	fbImageStorage(const string& workdir);
+	fbImageStorage(const char* workdir);
+	~fbImageStorage();
+	void LoadImages();
+	void LoadImages(const stLoadSpec& spec);
+	void LoadImages(const stLoadSpec* spec);
+	void CreateIndex();
+	void SetWorkdir(const string& workdir);
+	void SetWorkdir(const char* workdir);
+	void Erase(const string& item);
+	void Clear();
+	bool Empty();
+	bool HasItem (const string& item);
+	map<string, fbTga*>::iterator Begin();
+	map<string, fbTga*>::iterator End();
+	map<string, fbTga*>::iterator Find(const char* image);
+	map<string, fbTga*>::iterator Find(const string& image);
+	uint16_t Size();
+};
+
+#endif
